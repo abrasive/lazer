@@ -3,8 +3,7 @@
 #include <GLUT/glut.h>
 #include <math.h>
 
-#define RING_SIZE (0x10000)
-#define RING_MASK (0x0ffff)
+#define RING_SIZE (0x40000)
 short ringbuf[RING_SIZE*4];
 volatile int wptr = 0, rptr = 0;
 
@@ -27,6 +26,7 @@ static void callback (void *param, AudioQueueRef queue, AudioQueueBufferRef buf,
     int write_now;
     if (wptr + to_write >= RING_SIZE) {
         //fprintf(stderr, "wrapping - wptr %d, tw %d, rs %d\n", wptr, to_write, RING_SIZE);
+        fprintf(stderr, "w");
         write_now = RING_SIZE - wptr - 1;
         memcpy(ringbuf + 4*wptr, data, 4*2*write_now);
         to_write -= write_now;
@@ -90,12 +90,14 @@ void display(void) {
     glVertex2f(last_x, last_y);
 
     n = 0;
-    while (rptr != wptr && n++ < 1000) {
-        x = ringbuf[rptr++] / 32768.0;
-        y = ringbuf[rptr++] / 32768.0;
-        rptr += 2;
-        if (rptr>=RING_SIZE)
+    while (rptr != wptr) {
+        x = ringbuf[rptr*4] / 32768.0;
+        y = ringbuf[rptr*4+1] / 32768.0;
+        rptr++;
+        if (rptr>=RING_SIZE) {
             rptr = 0;
+            fprintf(stderr, "r");
+        }
         glVertex2f(x, y);
         glVertex2f(x, y);
     }
