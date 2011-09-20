@@ -90,6 +90,7 @@ void display(void) {
     glVertex2f(last_x, last_y);
 
     n = 0;
+again:
     while (rptr != wptr) {
         x = ringbuf[rptr*4] / 32768.0;
         y = ringbuf[rptr*4+1] / 32768.0;
@@ -100,6 +101,11 @@ void display(void) {
         }
         glVertex2f(x, y);
         glVertex2f(x, y);
+        n++;
+    }
+    if (n < 1000) {
+        glutSwapBuffers();
+        goto again;
     }
     glVertex2f(x, y);
     last_x = x; last_y = y;
@@ -125,7 +131,7 @@ int main(int argc, char **argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE | GLUT_ACCUM);
     glutInitWindowSize(600,600);
-    glutCreateWindow("Hello World");
+    glutCreateWindow("glLaserCanvas");
     glutDisplayFunc(display);
 
     long sync = 1;
