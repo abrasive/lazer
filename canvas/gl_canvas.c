@@ -1,3 +1,7 @@
+/* gl_canvas.c (c) 2011 James Laird */
+
+/* tested with Soundflower 16-ch loopback device */
+
 #include <OpenGL/gl.h>
 #include <OpenGL/CGLTypes.h>
 #include <GLUT/glut.h>
@@ -21,9 +25,9 @@ void mouse (int button, int state, int x, int y) {
     }
 }
     
+/* coreaudio is painful. excuse the next 200 lines, largely cribbed from an Apple TN
+ * (except for the crucial bits, of course, which were missing.)                    */
 AudioComponentInstance auHAL;
-
-//#include <AudioToolbox/AudioQueue.h>
 
 AudioBufferList *theBufferList;
 
@@ -57,19 +61,15 @@ OSStatus callback(
     wptr += to_write;
 }
     
-#define n_buffers (1)
-
 int record_main(void) {
     AudioBuffer *buf;
-    theBufferList = malloc(sizeof(AudioBufferList) + sizeof(AudioBuffer*)*n_buffers);
-    theBufferList->mNumberBuffers = n_buffers;
+    theBufferList = malloc(sizeof(AudioBufferList));
+    theBufferList->mNumberBuffers = 1;
     int i;
-    for (i=0; i<n_buffers; i++) {
-        buf = theBufferList->mBuffers + i;
-        buf->mNumberChannels = 3;
-        buf->mDataByteSize = 3*1000;
-        buf->mData = 0; // malloc(3*1000);
-    }
+    buf = theBufferList->mBuffers;
+    buf->mNumberChannels = 3;
+    buf->mDataByteSize = 3*1000;
+    buf->mData = 0; // tell the audiounit to show us its 'buffers'
 
     AudioComponent comp;
     AudioComponentDescription desc;
@@ -225,8 +225,6 @@ int record_main(void) {
 double t = 0.0;
 double last_x = 0, last_y = 0;
 
-int times = 0;
-
 void display(void) {
     if (rptr==wptr) {
         glutSwapBuffers();
@@ -244,7 +242,6 @@ void display(void) {
     glVertex2f(last_x, last_y);
 
     n = 0;
-    //fprintf(stderr, "b %f %f %f %f\n", ringbuf[rptr*4+0]/32768.0, ringbuf[rptr*4+1]/32768.0, ringbuf[rptr*4+2]/32768.0, ringbuf[rptr*4+3]/32768.0);
 again:
     while (rptr != wptr) {
         x = ringbuf[rptr*4] / 32768.0;
@@ -268,7 +265,7 @@ again:
     last_x = x; last_y = y;
     glEnd();
 
-#define SKIP_ACCUM
+#define SKIP_ACCUM  // accumulation buffer gives nice smooth decay effect, but is slow as tar on most machines
 #ifndef SKIP_ACCUM
     glAccum(GL_MULT, 0.7);
     glAccum(GL_ACCUM, 1.0);
