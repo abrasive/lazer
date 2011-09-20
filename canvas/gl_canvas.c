@@ -11,6 +11,15 @@
 #define RING_SIZE (0x40000)
 short ringbuf[RING_SIZE*4];
 volatile int wptr = 0, rptr = 0;
+
+int fullbright = 0;
+
+void mouse (int button, int state, int x, int y) {
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        fullbright = !fullbright;
+        glutSetWindowTitle(fullbright ? "glLaserCanvas - FULLBRIGHT" : "glLaserCanvas");
+    }
+}
     
 AudioComponentInstance auHAL;
 
@@ -240,7 +249,8 @@ again:
     while (rptr != wptr) {
         x = ringbuf[rptr*4] / 32768.0;
         y = ringbuf[rptr*4+1] / 32768.0;
-        glColor4f(0, ringbuf[rptr*4+2]/32768.0, 0,0.7);
+        if (!fullbright)
+            glColor4f(0, ringbuf[rptr*4+2]/32768.0, 0,0.7);
         rptr++;
         if (rptr>=RING_SIZE) {
             rptr = 0;
@@ -281,6 +291,7 @@ int main(int argc, char **argv) {
     glutInitWindowSize(600,600);
     glutCreateWindow("glLaserCanvas");
     glutDisplayFunc(display);
+    glutMouseFunc(mouse);
 
     long sync = 1;
     CGLContextObj ctx = CGLGetCurrentContext();
