@@ -12,6 +12,8 @@
 #include <CoreAudio/CoreAudio.h>
 #include <CoreAudio/AudioHardware.h>
 
+int sampling_rate = -1;
+
 #define RING_SIZE (0x40000)
 short ringbuf[RING_SIZE*4];
 volatile int wptr = 0, rptr = 0;
@@ -61,7 +63,7 @@ OSStatus callback(
     wptr += to_write;
 }
     
-int record_main(void) {
+int input_init(void) {
     AudioBuffer *buf;
     theBufferList = malloc(sizeof(AudioBufferList));
     theBufferList->mNumberBuffers = 1;
@@ -159,6 +161,7 @@ int record_main(void) {
     //set the desired format to the device's sample rate
     memcpy(&DesiredFormat, &DeviceFormat, sizeof(AudioStreamBasicDescription));
 
+    sampling_rate = DeviceFormat.mSampleRate;  // for laser-emulating filters
     DesiredFormat.mSampleRate =  DeviceFormat.mSampleRate;
     DesiredFormat.mChannelsPerFrame = 4;
     DesiredFormat.mBitsPerChannel = 16;
@@ -221,6 +224,42 @@ int record_main(void) {
         exit(err);
 }
 
+typedef struct {
+    double hist[2];
+    double a[2];
+    double b[3];
+} biquad_t;
+
+static void biquad_init(biquad_t *bq, double a[], double b[]) {
+    bq->hist[0] = bq->hist[1] = 0.0;
+    memcpy(bq->a, a, 2*sizeof(double));
+    memcpy(bq->b, b, 3*sizeof(double));
+}
+
+static void biquad_lpf(biquad_t *bq, double freq, double Q) {
+    double w0 = 2*M_PI*freq/(float)sampling_rate;
+    double alpha = sin(w0)/(2*Q);
+
+    double a_0 = 1.0 + alpha;
+    double b[3], a[2];
+    b[0] = (1.0-cos(w0))/(2.0*a_0);
+    b[1] = (1.0-cos(w0))/a_0;
+    b[2] = b[0];
+    a[0] = -2.0*cos(w0)/a_0;
+    a[1] = (1-alpha)/a_0;
+
+    biquad_init(bq, a, b);
+}
+
+static double biquad_filt(biquad_t *bq, double in) {
+    double w = in - bq->a[0]*bq->hist[0] - bq->a[1]*bq->hist[1];
+    double out = bq->b[1]*bq->hist[0] + bq->b[2]*bq->hist[1] + bq->b[0]*w;
+    bq->hist[1] = bq->hist[0];
+    bq->hist[0] = w;
+    return out;
+}
+
+biquad_t lpf_x, lpf_y;
 
 double t = 0.0;
 double last_x = 0, last_y = 0;
@@ -244,8 +283,8 @@ void display(void) {
     n = 0;
 again:
     while (rptr != wptr) {
-        x = ringbuf[rptr*4] / 32768.0;
-        y = ringbuf[rptr*4+1] / 32768.0;
+        x = biquad_filt(&lpf_x, ringbuf[rptr*4] / 32768.0);
+        y = biquad_filt(&lpf_y, ringbuf[rptr*4+1] / 32768.0);
         if (!fullbright)
             glColor4f(0, ringbuf[rptr*4+2]/32768.0, 0,0.7);
         rptr++;
@@ -294,7 +333,10 @@ int main(int argc, char **argv) {
     CGLContextObj ctx = CGLGetCurrentContext();
     CGLSetParameter (ctx, kCGLCPSwapInterval, &sync);  
     
-
+    // have to init input to find the sample rate before setting up the filters
+    input_init();
+    biquad_lpf(&lpf_x, 1500, 0.6);
+    biquad_lpf(&lpf_y, 1500, 0.6);
 
     glLoadIdentity();
     glDrawBuffer(GL_FRONT);
@@ -306,7 +348,6 @@ int main(int argc, char **argv) {
     glAccum(GL_RETURN, 1.0);
     //glutSwapBuffers();
     
-    record_main();
     glutMainLoop();
     return 0;
 }
